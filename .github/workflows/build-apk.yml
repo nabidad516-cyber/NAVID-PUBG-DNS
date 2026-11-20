@@ -4,25 +4,54 @@ name: Build NAVID PUBG DNS APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    paths:
+      - '**.zip'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Check ZIP file
+        run: |
+          ZIP_FILE=$(find . -type f -iname "*.zip" \
+            -not -path "./.git/*" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP file not found!"
+            exit 1
+          fi
+
+          echo "Found: $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
 
       - name: Extract project ZIP
         run: |
-          mkdir extracted
-          unzip -q NAVID-PUBG-DNS-project.zip -d extracted
-          PROJECT=$(find extracted -name settings.gradle.kts -printf '%h\n' | head -n 1)
-          cp -a "$PROJECT/." .
+          mkdir -p project
+          unzip -o "$ZIP_FILE" -d project
+
+      - name: Find Android project
+        run: |
+          GRADLE_FILE=$(find project -type f \
+            -name gradlew | head -n 1)
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "ERROR: gradlew not found!"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLE_FILE")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          chmod +x "$GRADLE_FILE"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -33,16 +62,30 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Build APK
-        run: gradle assembleDebug
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Check APK
+        run: |
+          APK=$(find "$PROJECT_DIR" -type f \
+            -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not generated!"
+            exit 1
+          fi
+
+          echo "APK created: $APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NAVID-PUBG-DNS-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
