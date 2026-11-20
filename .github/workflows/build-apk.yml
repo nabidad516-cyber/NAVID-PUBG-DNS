@@ -16,6 +16,10 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,6 +35,7 @@ jobs:
           fi
 
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+          echo "Found ZIP: $ZIP_FILE"
 
       - name: Extract project ZIP
         run: |
@@ -44,12 +49,14 @@ jobs:
             -o -name "settings.gradle.kts" \) | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "Android project settings not found!"
+            echo "Android settings file not found!"
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Project found: $PROJECT_DIR"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -58,10 +65,32 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f -name sdkmanager | head -n 1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found!"
+            exit 1
+          fi
+
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
+        run: |
+          yes | "$SDKMANAGER" --licenses || true
+
+      - name: Install Android packages
+        run: |
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "platforms;android-35" \
+            "platforms;android-36" \
+            "build-tools;34.0.0" \
+            "build-tools;35.0.0" \
+            "build-tools;36.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -72,6 +101,18 @@ jobs:
         run: |
           cd "$PROJECT_DIR"
           gradle --no-daemon assembleDebug
+
+      - name: Check APK
+        run: |
+          APK=$(find "$PROJECT_DIR" -type f \
+            -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "APK not generated!"
+            exit 1
+          fi
+
+          echo "APK created successfully!"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
