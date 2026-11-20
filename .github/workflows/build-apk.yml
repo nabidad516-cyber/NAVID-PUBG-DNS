@@ -20,18 +20,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check ZIP file
+      - name: Find ZIP file
         run: |
           ZIP_FILE=$(find . -type f -iname "*.zip" \
             -not -path "./.git/*" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP file not found!"
+            echo "ZIP file not found!"
             exit 1
           fi
 
-          echo "Found: $ZIP_FILE"
-          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
       - name: Extract project ZIP
         run: |
@@ -40,18 +39,17 @@ jobs:
 
       - name: Find Android project
         run: |
-          GRADLE_FILE=$(find project -type f \
-            -name gradlew | head -n 1)
+          SETTINGS=$(find project -type f \
+            \( -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \) | head -n 1)
 
-          if [ -z "$GRADLE_FILE" ]; then
-            echo "ERROR: gradlew not found!"
+          if [ -z "$SETTINGS" ]; then
+            echo "Android project settings not found!"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLE_FILE")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-
-          chmod +x "$GRADLE_FILE"
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -65,22 +63,15 @@ jobs:
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          ./gradlew --no-daemon assembleDebug
-
-      - name: Check APK
-        run: |
-          APK=$(find "$PROJECT_DIR" -type f \
-            -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK not generated!"
-            exit 1
-          fi
-
-          echo "APK created: $APK"
+          gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -89,3 +80,4 @@ jobs:
           path: project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+          
