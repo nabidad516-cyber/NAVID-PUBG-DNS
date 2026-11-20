@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build NAVID PUBG DNS APK
     runs-on: ubuntu-latest
 
     env:
@@ -24,20 +24,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP file
+      - name: Find ZIP
         run: |
           ZIP_FILE=$(find . -type f -iname "*.zip" \
             -not -path "./.git/*" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ZIP file not found!"
+            echo "ZIP NOT FOUND"
             exit 1
           fi
 
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
-          echo "Found ZIP: $ZIP_FILE"
 
-      - name: Extract project ZIP
+      - name: Extract ZIP
         run: |
           mkdir -p project
           unzip -o "$ZIP_FILE" -d project
@@ -49,14 +48,12 @@ jobs:
             -o -name "settings.gradle.kts" \) | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "Android settings file not found!"
+            echo "ANDROID PROJECT NOT FOUND"
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Project found: $PROJECT_DIR"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -70,12 +67,11 @@ jobs:
             -type f -name sdkmanager | head -n 1)
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found!"
+            echo "SDKMANAGER NOT FOUND"
             exit 1
           fi
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept Android licenses
         run: |
@@ -97,6 +93,31 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: Fix Java and Kotlin versions
+        run: |
+          APP_FILE="$PROJECT_DIR/app/build.gradle.kts"
+
+          if [ ! -f "$APP_FILE" ]; then
+            echo "APP GRADLE FILE NOT FOUND"
+            exit 1
+          fi
+
+          cat >> "$APP_FILE" <<'EOF'
+
+          tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+              sourceCompatibility = "17"
+              targetCompatibility = "17"
+          }
+
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
+
+          echo "Java and Kotlin targets configured to 17"
+
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
@@ -108,11 +129,11 @@ jobs:
             -path "*/build/outputs/apk/debug/*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "APK not generated!"
+            echo "APK NOT GENERATED"
             exit 1
           fi
 
-          echo "APK created successfully!"
+          echo "APK SUCCESS: $APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
